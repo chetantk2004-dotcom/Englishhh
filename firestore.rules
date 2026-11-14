@@ -1,0 +1,580 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBlockedEitherWay(uidA, uidB) {
+      return exists(/databases/$(database)/documents/blocked_users/$(uidA + '_' + uidB)) ||
+             exists(/databases/$(database)/documents/blocked_users/$(uidB + '_' + uidA));
+    }
+
+    function isValidUser(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.profileId is string && data.profileId.matches('^EL[0-9A-Z]{5,10}$') &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 24 &&
+             data.username.matches('^[a-zA-Z0-9_]+$') &&
+             data.usernameLower is string && data.usernameLower == data.username.lower() &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 40 &&
+             data.avatarUrl is string && data.avatarUrl.size() >= 1 && data.avatarUrl.size() <= 35000 &&
+             data.bio is string && data.bio.size() <= 160 &&
+             data.totalXp is int && data.totalXp >= 0 &&
+             data.streak is int && data.streak >= 0 &&
+             data.lessonsCompleted is int && data.lessonsCompleted >= 0 &&
+             data.wordsLearned is int && data.wordsLearned >= 0 &&
+             data.achievementsCount is int && data.achievementsCount >= 0 &&
+             data.followersCount is int && data.followersCount >= 0 &&
+             data.followingCount is int && data.followingCount >= 0 &&
+             data.isPrivate is bool &&
+             data.shareAchievements is bool &&
+             data.notifyActivity is bool &&
+             data.interests is list && data.interests.size() <= 5 &&
+             (data.interests.size() == 0 || data.interests[0] is string);
+    }
+
+    function isValidFollow(data) {
+      return data.followerUserId is string && isValidId(data.followerUserId) &&
+             data.followedUserId is string && isValidId(data.followedUserId) &&
+             data.followerUserId != data.followedUserId &&
+             data.followerDisplayName is string && data.followerDisplayName.size() >= 1 && data.followerDisplayName.size() <= 40 &&
+             data.followerUsername is string && data.followerUsername.size() >= 3 && data.followerUsername.size() <= 24 &&
+             data.followerAvatarUrl is string && data.followerAvatarUrl.size() <= 35000 &&
+             data.followedDisplayName is string && data.followedDisplayName.size() >= 1 && data.followedDisplayName.size() <= 40 &&
+             data.followedUsername is string && data.followedUsername.size() >= 3 && data.followedUsername.size() <= 24 &&
+             data.followedAvatarUrl is string && data.followedAvatarUrl.size() <= 35000 &&
+             data.isPublicFollow is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAchievement(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.achievementType is string && data.achievementType.size() >= 2 && data.achievementType.size() <= 50 &&
+             data.achievementTitle is string && data.achievementTitle.size() >= 1 && data.achievementTitle.size() <= 80 &&
+             data.achievementTitleHi is string && data.achievementTitleHi.size() >= 1 && data.achievementTitleHi.size() <= 100 &&
+             data.descriptionHi is string && data.descriptionHi.size() <= 200 &&
+             data.xpBonus is int && data.xpBonus >= 0 && data.xpBonus <= 1000 &&
+             data.isPublic is bool &&
+             data.earnedAt is timestamp && data.earnedAt <= request.time;
+    }
+
+    function isValidActivity(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 24 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 40 &&
+             data.avatarUrl is string && data.avatarUrl.size() <= 35000 &&
+             data.profileId is string && data.profileId.matches('^EL[0-9A-Z]{5,10}$') &&
+             data.activityType is string && data.activityType in ['ACHIEVEMENT', 'LESSON_COMPLETED', 'MILESTONE'] &&
+             data.achievementId is string && data.achievementId.size() <= 128 &&
+             data.achievementTitle is string && data.achievementTitle.size() <= 80 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 200 &&
+             data.descriptionHi is string && data.descriptionHi.size() >= 1 && data.descriptionHi.size() <= 240 &&
+             data.visibility in ['PUBLIC', 'FOLLOWERS', 'HIDDEN'] &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0;
+    }
+
+    function isValidLike(data) {
+      return data.activityId is string && isValidId(data.activityId) &&
+             data.userId is string && isValidId(data.userId) &&
+             data.postOwnerId is string && isValidId(data.postOwnerId) &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidComment(data) {
+      return data.activityId is string && isValidId(data.activityId) &&
+             data.postOwnerId is string && isValidId(data.postOwnerId) &&
+             data.userId is string && isValidId(data.userId) &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 24 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 40 &&
+             data.avatarUrl is string && data.avatarUrl.size() <= 35000 &&
+             data.commentText is string && data.commentText.trim().size() >= 1 && data.commentText.size() <= 500 &&
+             data.parentCommentId is string && data.parentCommentId.size() <= 128;
+    }
+
+    function isValidNotification(data) {
+      return data.recipientUserId is string && isValidId(data.recipientUserId) &&
+             data.actorUserId is string && isValidId(data.actorUserId) &&
+             data.actorUserId != data.recipientUserId &&
+             data.actorUsername is string && data.actorUsername.size() >= 3 && data.actorUsername.size() <= 24 &&
+             data.actorDisplayName is string && data.actorDisplayName.size() >= 1 && data.actorDisplayName.size() <= 40 &&
+             data.actorAvatarUrl is string && data.actorAvatarUrl.size() <= 35000 &&
+             data.notificationType in ['FOLLOW', 'LIKE', 'COMMENT', 'REPLY', 'FRIEND_ACHIEVEMENT'] &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 200 &&
+             data.messageHi is string && data.messageHi.size() >= 1 && data.messageHi.size() <= 240 &&
+             data.activityId is string && data.activityId.size() <= 128 &&
+             data.commentId is string && data.commentId.size() <= 128 &&
+             data.isRead is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidBlock(data) {
+      return data.blockerUserId is string && isValidId(data.blockerUserId) &&
+             data.blockedUserId is string && isValidId(data.blockedUserId) &&
+             data.blockerUserId != data.blockedUserId &&
+             data.blockedUsername is string && data.blockedUsername.size() <= 24 &&
+             data.blockedDisplayName is string && data.blockedDisplayName.size() <= 40 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidReport(data) {
+      return data.reporterUserId is string && isValidId(data.reporterUserId) &&
+             data.reportedUserId is string && isValidId(data.reportedUserId) &&
+             data.contentType in ['USER', 'COMMENT', 'ACTIVITY'] &&
+             data.contentId is string && data.contentId.size() >= 1 && data.contentId.size() <= 128 &&
+             data.reason is string && data.reason.trim().size() >= 3 && data.reason.size() <= 300 &&
+             data.status == 'PENDING' &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidCourseProgress(data) {
+      return data.nodeId is string && isValidId(data.nodeId) &&
+             data.unitId is string && isValidId(data.unitId) &&
+             data.status in ['LOCKED', 'AVAILABLE', 'IN_PROGRESS', 'COMPLETED', 'PERFECT'] &&
+             data.bestScorePercent is int && data.bestScorePercent >= 0 && data.bestScorePercent <= 100 &&
+             data.lastScorePercent is int && data.lastScorePercent >= 0 && data.lastScorePercent <= 100 &&
+             data.starsEarned is int && data.starsEarned >= 0 && data.starsEarned <= 3 &&
+             data.attemptsCount is int && data.attemptsCount >= 0 &&
+             data.xpAwarded is bool &&
+             data.passingScorePercent is int && data.passingScorePercent >= 50 && data.passingScorePercent <= 100;
+    }
+
+    // 1. Public social user profiles (no PII stored)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && !isBlockedEitherWay(request.auth.uid, userId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'profileId', 'username', 'usernameLower', 'displayName',
+                         'avatarUrl', 'bio', 'totalXp', 'streak', 'lessonsCompleted',
+                         'wordsLearned', 'achievementsCount', 'followersCount', 'followingCount',
+                         'isPrivate', 'shareAchievements', 'notifyActivity', 'interests',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'profileId', 'username', 'usernameLower', 'displayName',
+                         'avatarUrl', 'bio', 'totalXp', 'streak', 'lessonsCompleted',
+                         'wordsLearned', 'achievementsCount', 'followersCount', 'followingCount',
+                         'isPrivate', 'shareAchievements', 'notifyActivity', 'interests',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().followersCount == 0 &&
+                       incoming().followingCount == 0 &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUser(incoming());
+
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().profileId == existing().profileId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         // Owner profile, learning stats, or own followingCount sync
+                         (
+                           request.auth.uid == userId &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'username', 'usernameLower', 'displayName', 'avatarUrl', 'bio',
+                             'totalXp', 'streak', 'lessonsCompleted', 'wordsLearned',
+                             'achievementsCount', 'followingCount', 'isPrivate',
+                             'shareAchievements', 'notifyActivity', 'interests', 'updatedAt'
+                           ])
+                         ) ||
+                         // Atomic follower count sync when another user creates or deletes follow doc in same batch
+                         (
+                           request.auth.uid != userId &&
+                           !isBlockedEitherWay(request.auth.uid, userId) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
+                           (
+                             (
+                               incoming().followersCount == existing().followersCount + 1 &&
+                               !exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + userId)) &&
+                               existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + userId))
+                             ) ||
+                             (
+                               incoming().followersCount == existing().followersCount - 1 &&
+                               existing().followersCount > 0 &&
+                               exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + userId)) &&
+                               !existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + userId))
+                             )
+                           )
+                         )
+                       );
+
+      allow delete: if false;
+
+      // Private-profile activities visible only to owner and verified followers
+      match /follower_activities/{activityId} {
+        allow get, list: if isSignedIn() && isValidId(userId) && (
+          request.auth.uid == userId ||
+          (
+            exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + userId)) &&
+            !isBlockedEitherWay(request.auth.uid, userId)
+          )
+        );
+        allow create, update: if isSignedIn() && isValidId(userId) && isValidId(activityId) &&
+                                 request.auth.uid == userId &&
+                                 incoming().userId == userId &&
+                                 isValidActivity(incoming()) &&
+                                 incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                                 incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // Owner-isolated learning path node progression
+      match /course_progress/{nodeId} {
+        allow get, list: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(nodeId) &&
+                         request.auth.uid == userId &&
+                         incoming().nodeId == nodeId &&
+                         incoming().keys().hasAll([
+                           'nodeId', 'unitId', 'status', 'bestScorePercent', 'lastScorePercent',
+                           'starsEarned', 'attemptsCount', 'xpAwarded', 'passingScorePercent',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'nodeId', 'unitId', 'status', 'bestScorePercent', 'lastScorePercent',
+                           'starsEarned', 'attemptsCount', 'xpAwarded', 'passingScorePercent',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         isValidCourseProgress(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(nodeId) &&
+                         request.auth.uid == userId &&
+                         incoming().nodeId == existing().nodeId &&
+                         incoming().unitId == existing().unitId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         isValidCourseProgress(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'status', 'bestScorePercent', 'lastScorePercent', 'starsEarned',
+                           'attemptsCount', 'xpAwarded', 'passingScorePercent', 'updatedAt'
+                         ]);
+
+        allow delete: if false;
+      }
+    }
+
+    // 2. One-way follow relationships (deterministic ID prevents duplicates)
+    match /follows/{followId} {
+      allow get: if isSignedIn() && isValidId(followId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(followId) &&
+                       followId == (request.auth.uid + '_' + incoming().followedUserId) &&
+                       incoming().followerUserId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'followerUserId', 'followedUserId', 'followerDisplayName', 'followerUsername',
+                         'followerAvatarUrl', 'followedDisplayName', 'followedUsername',
+                         'followedAvatarUrl', 'isPublicFollow', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'followerUserId', 'followedUserId', 'followerDisplayName', 'followerUsername',
+                         'followerAvatarUrl', 'followedDisplayName', 'followedUsername',
+                         'followedAvatarUrl', 'isPublicFollow', 'createdAt'
+                       ]) &&
+                       isValidFollow(incoming()) &&
+                       !isBlockedEitherWay(request.auth.uid, incoming().followedUserId);
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() && isValidId(followId) && (
+        existing().followerUserId == request.auth.uid ||
+        existing().followedUserId == request.auth.uid
+      );
+    }
+
+    // 3. Achievements (deterministic ID prevents duplicates)
+    match /achievements/{achievementId} {
+      allow get: if isSignedIn() && isValidId(achievementId) && (
+        resource == null ||
+        existing().userId == request.auth.uid ||
+        (
+          !isBlockedEitherWay(request.auth.uid, existing().userId) &&
+          (
+            existing().isPublic == true ||
+            exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + existing().userId))
+          )
+        )
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.isPublic == true
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(achievementId) &&
+                       achievementId == (request.auth.uid + '_' + incoming().achievementType) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'achievementType', 'achievementTitle', 'achievementTitleHi',
+                         'descriptionHi', 'xpBonus', 'isPublic', 'earnedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'achievementType', 'achievementTitle', 'achievementTitleHi',
+                         'descriptionHi', 'xpBonus', 'isPublic', 'earnedAt'
+                       ]) &&
+                       isValidAchievement(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(achievementId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().achievementType == existing().achievementType &&
+                       incoming().earnedAt == existing().earnedAt &&
+                       isValidAchievement(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['isPublic']);
+
+      allow delete: if false;
+    }
+
+    // 4. Activity Feed
+    match /activity_feed/{activityId} {
+      allow get: if isSignedIn() && isValidId(activityId) && (
+        resource == null ||
+        existing().userId == request.auth.uid ||
+        (
+          existing().visibility != 'HIDDEN' &&
+          !isBlockedEitherWay(request.auth.uid, existing().userId) &&
+          (
+            existing().visibility == 'PUBLIC' ||
+            (
+              existing().visibility == 'FOLLOWERS' &&
+              exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + existing().userId))
+            )
+          )
+        )
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.visibility == 'PUBLIC'
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(activityId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'username', 'displayName', 'avatarUrl', 'profileId',
+                         'activityType', 'achievementId', 'achievementTitle', 'description',
+                         'descriptionHi', 'visibility', 'likesCount', 'commentsCount',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'username', 'displayName', 'avatarUrl', 'profileId',
+                         'activityType', 'achievementId', 'achievementTitle', 'description',
+                         'descriptionHi', 'visibility', 'likesCount', 'commentsCount',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().likesCount == 0 &&
+                       incoming().commentsCount == 0 &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidActivity(incoming());
+
+      allow update: if isSignedIn() && isValidId(activityId) && isValidActivity(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         // Owner controls visibility or profile snapshot text
+                         (
+                           existing().userId == request.auth.uid &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['visibility', 'displayName', 'username', 'avatarUrl', 'updatedAt'])
+                         ) ||
+                         // Atomic like count sync matching post_likes document
+                         (
+                           !isBlockedEitherWay(request.auth.uid, existing().userId) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt']) &&
+                           (
+                             (
+                               incoming().likesCount == existing().likesCount + 1 &&
+                               !exists(/databases/$(database)/documents/post_likes/$(activityId + '_' + request.auth.uid)) &&
+                               existsAfter(/databases/$(database)/documents/post_likes/$(activityId + '_' + request.auth.uid))
+                             ) ||
+                             (
+                               incoming().likesCount == existing().likesCount - 1 &&
+                               existing().likesCount > 0 &&
+                               exists(/databases/$(database)/documents/post_likes/$(activityId + '_' + request.auth.uid)) &&
+                               !existsAfter(/databases/$(database)/documents/post_likes/$(activityId + '_' + request.auth.uid))
+                             )
+                           )
+                         ) ||
+                         // Comment count update when commenting or deleting comment
+                         (
+                           !isBlockedEitherWay(request.auth.uid, existing().userId) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount', 'updatedAt']) &&
+                           (
+                             incoming().commentsCount == existing().commentsCount + 1 ||
+                             (incoming().commentsCount == existing().commentsCount - 1 && existing().commentsCount > 0)
+                           )
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(activityId) && existing().userId == request.auth.uid;
+    }
+
+    // 5. Post Likes (deterministic ID activityId_userId prevents duplicate likes)
+    match /post_likes/{likeId} {
+      allow get: if isSignedIn() && isValidId(likeId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(likeId) &&
+                       likeId == (incoming().activityId + '_' + request.auth.uid) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['activityId', 'userId', 'postOwnerId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['activityId', 'userId', 'postOwnerId', 'createdAt']) &&
+                       isValidLike(incoming()) &&
+                       exists(/databases/$(database)/documents/activity_feed/$(incoming().activityId)) &&
+                       !isBlockedEitherWay(request.auth.uid, incoming().postOwnerId);
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() && isValidId(likeId) && existing().userId == request.auth.uid;
+    }
+
+    // 6. Comments (with threaded replies via parentCommentId)
+    match /comments/{commentId} {
+      allow get: if isSignedIn() && isValidId(commentId) && (
+        resource == null ||
+        !isBlockedEitherWay(request.auth.uid, existing().userId)
+      );
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(commentId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'activityId', 'postOwnerId', 'userId', 'username', 'displayName',
+                         'avatarUrl', 'commentText', 'parentCommentId', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'activityId', 'postOwnerId', 'userId', 'username', 'displayName',
+                         'avatarUrl', 'commentText', 'parentCommentId', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidComment(incoming()) &&
+                       exists(/databases/$(database)/documents/activity_feed/$(incoming().activityId)) &&
+                       !isBlockedEitherWay(request.auth.uid, incoming().postOwnerId);
+
+      allow update: if isSignedIn() &&
+                       isValidId(commentId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().activityId == existing().activityId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidComment(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['commentText', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(commentId) && (
+        existing().userId == request.auth.uid ||
+        existing().postOwnerId == request.auth.uid
+      );
+    }
+
+    // 7. In-App Notifications (strictly recipient-isolated reads)
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (
+        resource == null ||
+        existing().recipientUserId == request.auth.uid ||
+        existing().actorUserId == request.auth.uid
+      );
+      allow list: if isSignedIn() && resource.data.recipientUserId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(notificationId) &&
+                       incoming().actorUserId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'recipientUserId', 'actorUserId', 'actorUsername', 'actorDisplayName',
+                         'actorAvatarUrl', 'notificationType', 'message', 'messageHi',
+                         'activityId', 'commentId', 'isRead', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'recipientUserId', 'actorUserId', 'actorUsername', 'actorDisplayName',
+                         'actorAvatarUrl', 'notificationType', 'message', 'messageHi',
+                         'activityId', 'commentId', 'isRead', 'createdAt'
+                       ]) &&
+                       incoming().isRead == false &&
+                       isValidNotification(incoming()) &&
+                       !isBlockedEitherWay(request.auth.uid, incoming().recipientUserId);
+
+      allow update: if isSignedIn() &&
+                       isValidId(notificationId) &&
+                       existing().recipientUserId == request.auth.uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) &&
+                       incoming().isRead is bool;
+
+      allow delete: if isSignedIn() && isValidId(notificationId) && existing().recipientUserId == request.auth.uid;
+    }
+
+    // 8. Blocked Users
+    match /blocked_users/{blockId} {
+      allow get: if isSignedIn() && isValidId(blockId) && (
+        resource == null ||
+        existing().blockerUserId == request.auth.uid ||
+        existing().blockedUserId == request.auth.uid
+      );
+      allow list: if isSignedIn() && resource.data.blockerUserId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(blockId) &&
+                       blockId == (request.auth.uid + '_' + incoming().blockedUserId) &&
+                       incoming().blockerUserId == request.auth.uid &&
+                       incoming().keys().hasAll(['blockerUserId', 'blockedUserId', 'blockedUsername', 'blockedDisplayName', 'createdAt']) &&
+                       incoming().keys().hasOnly(['blockerUserId', 'blockedUserId', 'blockedUsername', 'blockedDisplayName', 'createdAt']) &&
+                       isValidBlock(incoming());
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() && isValidId(blockId) && existing().blockerUserId == request.auth.uid;
+    }
+
+    // 9. Reported Content
+    match /reported_content/{reportId} {
+      allow get, list: if isSignedIn() && resource.data.reporterUserId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().reporterUserId == request.auth.uid &&
+                       incoming().keys().hasAll(['reporterUserId', 'reportedUserId', 'contentType', 'contentId', 'reason', 'status', 'createdAt']) &&
+                       incoming().keys().hasOnly(['reporterUserId', 'reportedUserId', 'contentType', 'contentId', 'reason', 'status', 'createdAt']) &&
+                       isValidReport(incoming());
+
+      allow update, delete: if false;
+    }
+  }
+}

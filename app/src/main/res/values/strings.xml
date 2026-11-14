@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">English सीखें</string>
+    <string name="nav_home">होम</string>
+    <string name="nav_learn">सीखें</string>
+    <string name="nav_practice">अभ्यास</string>
+    <string name="nav_progress">प्रगति</string>
+    <string name="nav_profile">प्रोफ़ाइल</string>
+    <string name="cd_mascot_hero">English सीखें का शुभंकर</string>
+    <string name="cd_learning_banner">सीखने की यात्रा का चित्र</string>
+    <string name="cd_streak_icon">सीखने की लगातार स्ट्रीक</string>
+    <string name="cd_xp_icon">कुल XP अंक</string>
+    <string name="cd_save_word">पसंदीदा शब्द सहेजें</string>
+    <string name="cd_close">बंद करें</string>
+</resources>

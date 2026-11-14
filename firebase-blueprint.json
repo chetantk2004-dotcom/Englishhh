@@ -1,0 +1,266 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public social learning profile for an authenticated user (zero PII).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "profileId": { "type": "string", "description": "Immutable unique ID e.g. EL10245." },
+        "username": { "type": "string", "description": "Unique handle without @." },
+        "usernameLower": { "type": "string", "description": "Lowercase username for case-insensitive search." },
+        "displayName": { "type": "string" },
+        "avatarUrl": { "type": "string", "description": "Preset key or compact resized image data URI." },
+        "bio": { "type": "string" },
+        "totalXp": { "type": "integer" },
+        "streak": { "type": "integer" },
+        "lessonsCompleted": { "type": "integer" },
+        "wordsLearned": { "type": "integer" },
+        "achievementsCount": { "type": "integer" },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "isPrivate": { "type": "boolean" },
+        "shareAchievements": { "type": "boolean" },
+        "notifyActivity": { "type": "boolean" },
+        "interests": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp" }
+      },
+      "required": [
+        "userId", "profileId", "username", "usernameLower", "displayName",
+        "avatarUrl", "bio", "totalXp", "streak", "lessonsCompleted",
+        "wordsLearned", "achievementsCount", "followersCount", "followingCount",
+        "isPrivate", "shareAchievements", "notifyActivity", "interests",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "FollowRelation": {
+      "title": "FollowRelation",
+      "description": "One-way follow relationship keyed as followerUid_followedUid.",
+      "type": "object",
+      "properties": {
+        "followerUserId": { "type": "string" },
+        "followedUserId": { "type": "string" },
+        "followerDisplayName": { "type": "string" },
+        "followerUsername": { "type": "string" },
+        "followerAvatarUrl": { "type": "string" },
+        "followedDisplayName": { "type": "string" },
+        "followedUsername": { "type": "string" },
+        "followedAvatarUrl": { "type": "string" },
+        "isPublicFollow": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "followerUserId", "followedUserId", "followerDisplayName", "followerUsername",
+        "followerAvatarUrl", "followedDisplayName", "followedUsername", "followedAvatarUrl",
+        "isPublicFollow", "createdAt"
+      ]
+    },
+    "UserAchievement": {
+      "title": "UserAchievement",
+      "description": "Earned achievement badge keyed as userId_achievementType.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "achievementType": { "type": "string" },
+        "achievementTitle": { "type": "string" },
+        "achievementTitleHi": { "type": "string" },
+        "descriptionHi": { "type": "string" },
+        "xpBonus": { "type": "integer" },
+        "isPublic": { "type": "boolean" },
+        "earnedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "achievementType", "achievementTitle", "achievementTitleHi",
+        "descriptionHi", "xpBonus", "isPublic", "earnedAt"
+      ]
+    },
+    "ActivityFeedItem": {
+      "title": "ActivityFeedItem",
+      "description": "Learning activity or achievement shared to Friends Feed.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "profileId": { "type": "string" },
+        "activityType": { "type": "string" },
+        "achievementId": { "type": "string" },
+        "achievementTitle": { "type": "string" },
+        "description": { "type": "string" },
+        "descriptionHi": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "FOLLOWERS", "HIDDEN"] },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "username", "displayName", "avatarUrl", "profileId",
+        "activityType", "achievementId", "achievementTitle", "description",
+        "descriptionHi", "visibility", "likesCount", "commentsCount",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "PostLike": {
+      "title": "PostLike",
+      "description": "Single like keyed as activityId_userId to prevent duplicates.",
+      "type": "object",
+      "properties": {
+        "activityId": { "type": "string" },
+        "userId": { "type": "string" },
+        "postOwnerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["activityId", "userId", "postOwnerId", "createdAt"]
+    },
+    "PostComment": {
+      "title": "PostComment",
+      "description": "Comment or threaded reply on an activity post.",
+      "type": "object",
+      "properties": {
+        "activityId": { "type": "string" },
+        "postOwnerId": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "commentText": { "type": "string" },
+        "parentCommentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "activityId", "postOwnerId", "userId", "username", "displayName",
+        "avatarUrl", "commentText", "parentCommentId", "createdAt", "updatedAt"
+      ]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "In-app social notification for follows, likes, comments, replies, and friend achievements.",
+      "type": "object",
+      "properties": {
+        "recipientUserId": { "type": "string" },
+        "actorUserId": { "type": "string" },
+        "actorUsername": { "type": "string" },
+        "actorDisplayName": { "type": "string" },
+        "actorAvatarUrl": { "type": "string" },
+        "notificationType": { "type": "string", "enum": ["FOLLOW", "LIKE", "COMMENT", "REPLY", "FRIEND_ACHIEVEMENT"] },
+        "message": { "type": "string" },
+        "messageHi": { "type": "string" },
+        "activityId": { "type": "string" },
+        "commentId": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "recipientUserId", "actorUserId", "actorUsername", "actorDisplayName",
+        "actorAvatarUrl", "notificationType", "message", "messageHi",
+        "activityId", "commentId", "isRead", "createdAt"
+      ]
+    },
+    "BlockedUser": {
+      "title": "BlockedUser",
+      "description": "Block record keyed as blockerUserId_blockedUserId.",
+      "type": "object",
+      "properties": {
+        "blockerUserId": { "type": "string" },
+        "blockedUserId": { "type": "string" },
+        "blockedUsername": { "type": "string" },
+        "blockedDisplayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "blockerUserId", "blockedUserId", "blockedUsername", "blockedDisplayName", "createdAt"
+      ]
+    },
+    "ReportedContent": {
+      "title": "ReportedContent",
+      "description": "Moderation report for inappropriate users, comments, or posts.",
+      "type": "object",
+      "properties": {
+        "reporterUserId": { "type": "string" },
+        "reportedUserId": { "type": "string" },
+        "contentType": { "type": "string", "enum": ["USER", "COMMENT", "ACTIVITY"] },
+        "contentId": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "reporterUserId", "reportedUserId", "contentType", "contentId",
+        "reason", "status", "createdAt"
+      ]
+    },
+    "CourseNodeProgress": {
+      "title": "CourseNodeProgress",
+      "description": "Per-user learning path node progression state, best score, stars, and duplicate-XP guard.",
+      "type": "object",
+      "properties": {
+        "nodeId": { "type": "string", "description": "Unique learning path node ID matching document ID." },
+        "unitId": { "type": "string", "description": "Parent path unit ID." },
+        "status": { "type": "string", "enum": ["LOCKED", "AVAILABLE", "IN_PROGRESS", "COMPLETED", "PERFECT"] },
+        "bestScorePercent": { "type": "integer" },
+        "lastScorePercent": { "type": "integer" },
+        "starsEarned": { "type": "integer" },
+        "attemptsCount": { "type": "integer" },
+        "xpAwarded": { "type": "boolean" },
+        "passingScorePercent": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp" }
+      },
+      "required": [
+        "nodeId", "unitId", "status", "bestScorePercent", "lastScorePercent",
+        "starsEarned", "attemptsCount", "xpAwarded", "passingScorePercent",
+        "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public social profiles without PII."
+    },
+    "/users/{userId}/follower_activities/{activityId}": {
+      "schema": { "$ref": "#/entities/ActivityFeedItem" },
+      "description": "Private-profile activities readable only by owner and authorized followers."
+    },
+    "/users/{userId}/course_progress/{nodeId}": {
+      "schema": { "$ref": "#/entities/CourseNodeProgress" },
+      "description": "Owner-isolated learning path progress per lesson node."
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/FollowRelation" },
+      "description": "One-way follow relationships."
+    },
+    "/achievements/{achievementId}": {
+      "schema": { "$ref": "#/entities/UserAchievement" },
+      "description": "Earned user achievement badges."
+    },
+    "/activity_feed/{activityId}": {
+      "schema": { "$ref": "#/entities/ActivityFeedItem" },
+      "description": "Canonical activity feed posts for achievements and milestones."
+    },
+    "/post_likes/{likeId}": {
+      "schema": { "$ref": "#/entities/PostLike" },
+      "description": "Unique likes per user per activity."
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/PostComment" },
+      "description": "Comments and threaded replies on activity posts."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "Recipient-scoped in-app notifications."
+    },
+    "/blocked_users/{blockId}": {
+      "schema": { "$ref": "#/entities/BlockedUser" },
+      "description": "User block relationships."
+    },
+    "/reported_content/{reportId}": {
+      "schema": { "$ref": "#/entities/ReportedContent" },
+      "description": "User safety and content moderation reports."
+    }
+  }
+}

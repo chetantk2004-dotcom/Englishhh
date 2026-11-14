@@ -1,0 +1,6 @@
+{
+  "name": "English सीखें",
+  "description": "शून्य से आत्मविश्वास तक हिंदी के माध्यम से अंग्रेज़ी सीखने का आसान और इंटरैक्टिव ऐप",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
