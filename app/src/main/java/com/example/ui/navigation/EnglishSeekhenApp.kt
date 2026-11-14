@@ -1,6 +1,10 @@
 package com.example.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,8 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +71,7 @@ import com.example.auth.authStateFlow
 import com.example.auth.signOutFromApp
 import com.example.data.CourseProgressLocalStore
 import com.example.data.CourseProgressRepository
+import com.example.data.NetworkMonitor
 import com.example.data.SocialRepository
 import com.example.model.AppTab
 import com.example.model.FollowButtonState
@@ -77,6 +84,7 @@ import com.example.model.ROUTE_LESSON_PREFIX
 import com.example.model.ROUTE_PROGRESS
 import com.example.model.UnitStatus
 import com.example.model.lessonRoute
+import com.example.ui.components.BrandedSplashOverlay
 import com.example.ui.components.CommentsBottomSheet
 import com.example.ui.components.CourseSectionsOverviewSheet
 import com.example.ui.components.DailyBoosterSheet
@@ -84,6 +92,7 @@ import com.example.ui.components.EditProfileDialog
 import com.example.ui.components.FollowListSheet
 import com.example.ui.components.LessonNodePopupDialog
 import com.example.ui.components.LessonPreviewSheet
+import com.example.ui.components.OfflineStatusBanner
 import com.example.ui.components.PrivacySafetySheet
 import com.example.ui.components.ReportContentDialog
 import com.example.ui.components.UnitGuidebookSheet
@@ -103,6 +112,7 @@ import com.example.ui.viewmodel.ReportTarget
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.delay
 
 @Composable
 fun EnglishSeekhenApp() {
@@ -111,9 +121,12 @@ fun EnglishSeekhenApp() {
     val credentialManager = remember(context) { CredentialManager.create(context) }
     val currentUser by remember { Firebase.auth.authStateFlow() }
         .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    val isOnline by remember(context) { NetworkMonitor.observeIsOnline(context) }
+        .collectAsStateWithLifecycle(initialValue = NetworkMonitor.isCurrentlyOnline(context))
+    var showSplash by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        if (Firebase.auth.currentUser == null) {
+        if (Firebase.auth.currentUser == null && isOnline) {
             attemptAutoSignIn(
                 context = context,
                 credentialManager = credentialManager,
@@ -122,47 +135,64 @@ fun EnglishSeekhenApp() {
                 scope = scope
             )
         }
+        delay(850L)
+        showSplash = false
     }
 
-    val user = currentUser
-    if (user == null) {
-        EnglishSeekhenTheme(darkTheme = false) {
-            AuthScreen(onAuthSuccess = {})
-        }
-    } else {
-        key(user.uid) {
-            val appContext = context.applicationContext
-            val db = remember(appContext) {
-                FirebaseFirestore.getInstance(
-                    appContext.getString(R.string.firestore_database_id)
+    Box(modifier = Modifier.fillMaxSize()) {
+        val user = currentUser
+        if (user == null) {
+            EnglishSeekhenTheme(darkTheme = false) {
+                AuthScreen(
+                    onAuthSuccess = {},
+                    isOnline = isOnline
                 )
             }
-            val socialRepository = remember(db) { SocialRepository(db) }
-            val courseProgressRepository = remember(db) { CourseProgressRepository(db) }
-            val courseProgressLocalStore = remember(appContext) { CourseProgressLocalStore(appContext) }
-            val appViewModel: AppViewModel = viewModel(
-                key = user.uid,
-                factory = viewModelFactory {
-                    initializer {
-                        AppViewModel(
-                            socialRepository = socialRepository,
-                            currentUserId = user.uid,
-                            initialDisplayName = user.displayName,
-                            courseProgressRepository = courseProgressRepository,
-                            courseProgressLocalStore = courseProgressLocalStore
-                        )
-                    }
-                }
-            )
-            AuthenticatedAppContent(
-                viewModel = appViewModel,
-                onSignOut = {
-                    signOutFromApp(
-                        credentialManager = credentialManager,
-                        scope = scope
+        } else {
+            key(user.uid) {
+                val appContext = context.applicationContext
+                val db = remember(appContext) {
+                    FirebaseFirestore.getInstance(
+                        appContext.getString(R.string.firestore_database_id)
                     )
                 }
-            )
+                val socialRepository = remember(db) { SocialRepository(db) }
+                val courseProgressRepository = remember(db) { CourseProgressRepository(db) }
+                val courseProgressLocalStore = remember(appContext) { CourseProgressLocalStore(appContext) }
+                val appViewModel: AppViewModel = viewModel(
+                    key = user.uid,
+                    factory = viewModelFactory {
+                        initializer {
+                            AppViewModel(
+                                socialRepository = socialRepository,
+                                currentUserId = user.uid,
+                                initialDisplayName = user.displayName,
+                                courseProgressRepository = courseProgressRepository,
+                                courseProgressLocalStore = courseProgressLocalStore
+                            )
+                        }
+                    }
+                )
+                AuthenticatedAppContent(
+                    viewModel = appViewModel,
+                    isOnline = isOnline,
+                    onSignOut = {
+                        signOutFromApp(
+                            credentialManager = credentialManager,
+                            scope = scope
+                        )
+                    }
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showSplash,
+            exit = fadeOut()
+        ) {
+            EnglishSeekhenTheme(darkTheme = false) {
+                BrandedSplashOverlay()
+            }
         }
     }
 }
@@ -171,6 +201,7 @@ fun EnglishSeekhenApp() {
 @Composable
 private fun AuthenticatedAppContent(
     viewModel: AppViewModel,
+    isOnline: Boolean,
     onSignOut: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -298,11 +329,13 @@ private fun AuthenticatedAppContent(
                         }
                     }
 
-                    NavHost(
-                        navController = navController,
-                        startDestination = AppTab.HOME.route,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        OfflineStatusBanner(isOnline = isOnline)
+                        NavHost(
+                            navController = navController,
+                            startDestination = AppTab.HOME.route,
+                            modifier = Modifier.weight(1f)
+                        ) {
                         composable(AppTab.HOME.route) {
                             HomeScreen(
                                 uiState = uiState,
@@ -419,6 +452,7 @@ private fun AuthenticatedAppContent(
                                     }
                                 )
                             }
+                        }
                         }
                     }
                 }

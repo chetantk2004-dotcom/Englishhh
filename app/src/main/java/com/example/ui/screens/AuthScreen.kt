@@ -52,10 +52,12 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import com.example.R
 import com.example.auth.onGoogleSignInClicked
+import com.example.ui.components.OfflineStatusBanner
 
 @Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -79,6 +81,11 @@ fun AuthScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            OfflineStatusBanner(
+                isOnline = isOnline,
+                modifier = Modifier.clip(RoundedCornerShape(14.dp))
+            )
+
             Image(
                 painter = painterResource(id = R.drawable.img_mascot_hero),
                 contentDescription = stringResource(R.string.cd_mascot_hero),
@@ -153,6 +160,10 @@ fun AuthScreen(
 
             Button(
                 onClick = {
+                    if (!isOnline) {
+                        errorMessage = "कृपया Google से लॉगिन करने के लिए अपना इंटरनेट कनेक्शन चालू करें।"
+                        return@Button
+                    }
                     errorMessage = null
                     isLoading = true
                     onGoogleSignInClicked(
