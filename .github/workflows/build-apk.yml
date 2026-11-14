@@ -50,6 +50,35 @@ jobs:
             fi
           fi
 
+      - name: Prepare Firebase google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -f app/google-services.json ]; then
+            echo "Using committed app/google-services.json"
+          elif [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "Restoring app/google-services.json from GOOGLE_SERVICES_JSON secret"
+            python3 - <<'EOF'
+          import base64, json, os, sys
+          raw = os.environ.get("GOOGLE_SERVICES_JSON", "").strip()
+          if not raw:
+              sys.exit(1)
+          try:
+              json.loads(raw)
+              content = raw
+          except Exception:
+              decoded = base64.b64decode("".join(raw.split())).decode("utf-8")
+              json.loads(decoded)
+              content = decoded
+          with open("app/google-services.json", "w", encoding="utf-8") as f:
+              f.write(content)
+          print("Successfully wrote valid app/google-services.json")
+          EOF
+          else
+            echo "::error::Missing app/google-services.json. Download google-services.json from Firebase Console (project: gen-lang-client-0585798077, package: com.aistudio.englishseekhen.kxmpqz) and either commit it to app/google-services.json or add it as a GitHub Actions secret named GOOGLE_SERVICES_JSON."
+            exit 1
+          fi
+
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
