@@ -121,6 +121,11 @@ fun EnglishSeekhenApp() {
     val credentialManager = remember(context) { CredentialManager.create(context) }
     val currentUser by remember { Firebase.auth.authStateFlow() }
         .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    var syncedUser by remember { mutableStateOf(Firebase.auth.currentUser) }
+    LaunchedEffect(currentUser) {
+        syncedUser = currentUser
+    }
+
     val isOnline by remember(context) { NetworkMonitor.observeIsOnline(context) }
         .collectAsStateWithLifecycle(initialValue = NetworkMonitor.isCurrentlyOnline(context))
     var showSplash by remember { mutableStateOf(true) }
@@ -130,7 +135,7 @@ fun EnglishSeekhenApp() {
             attemptAutoSignIn(
                 context = context,
                 credentialManager = credentialManager,
-                onAuthSuccess = {},
+                onAuthSuccess = { syncedUser = Firebase.auth.currentUser },
                 onUnauthenticated = {},
                 scope = scope
             )
@@ -140,11 +145,11 @@ fun EnglishSeekhenApp() {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        val user = currentUser
+        val user = currentUser ?: syncedUser
         if (user == null) {
             EnglishSeekhenTheme(darkTheme = false) {
                 AuthScreen(
-                    onAuthSuccess = {},
+                    onAuthSuccess = { syncedUser = Firebase.auth.currentUser },
                     isOnline = isOnline
                 )
             }
@@ -179,7 +184,8 @@ fun EnglishSeekhenApp() {
                     onSignOut = {
                         signOutFromApp(
                             credentialManager = credentialManager,
-                            scope = scope
+                            scope = scope,
+                            onSignOutComplete = { syncedUser = null }
                         )
                     }
                 )

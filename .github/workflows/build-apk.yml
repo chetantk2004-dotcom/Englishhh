@@ -38,16 +38,37 @@ jobs:
           gradle-version: "9.3.1"
 
       - name: Prepare debug signing keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ ! -f debug.keystore ]; then
-            if [ -f debug.keystore.base64 ]; then
+            if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+              echo "Restoring permanent debug.keystore from DEBUG_KEYSTORE_BASE64 secret"
+              printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '\r\n' | base64 -d > debug.keystore
+            elif [ -f debug.keystore.base64 ]; then
+              echo "Restoring permanent debug.keystore from repository debug.keystore.base64"
               tr -d '\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
             else
+              echo "::warning::Neither debug.keystore.base64 nor DEBUG_KEYSTORE_BASE64 secret found. Generating a new temporary debug.keystore; Google Sign-In requires registering its SHA-1 in Firebase Console!"
               keytool -genkeypair -v -keystore debug.keystore \
                 -storepass android -alias androiddebugkey -keypass android \
                 -keyalg RSA -keysize 2048 -validity 10000 \
                 -dname "CN=Android Debug,O=Android,C=US"
             fi
+          fi
+          KEYSTORE_INFO=$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey)
+          SHA1=$(printf '%s\n' "$KEYSTORE_INFO" | awk -F'SHA1: ' '/SHA1:/{print $2}' | tr -d ' \r')
+          SHA256=$(printf '%s\n' "$KEYSTORE_INFO" | awk -F'SHA256: ' '/SHA256:/{print $2}' | tr -d ' \r')
+          echo "Active Debug Keystore SHA-1:   $SHA1"
+          echo "Active Debug Keystore SHA-256: $SHA256"
+          {
+            echo "### 🔐 Debug Signing Keystore Fingerprints"
+            echo "- **SHA-1:** \`$SHA1\`"
+            echo "- **SHA-256:** \`$SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          EXPECTED_SHA1="2A:9C:05:72:CC:72:81:5C:AC:48:C2:D2:E3:40:48:7E:63:A5:53:8E"
+          if [ "$SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "::warning::Active debug.keystore SHA-1 ($SHA1) does NOT match Firebase google-services.json SHA-1 ($EXPECTED_SHA1)! Google Sign-In will fail unless you commit debug.keystore.base64, set DEBUG_KEYSTORE_BASE64 secret, or register $SHA1 in Firebase Console."
           fi
 
       - name: Prepare Firebase google-services.json
@@ -64,33 +85,53 @@ jobs:
           if not raw:
               sys.exit(1)
           try:
-              json.loads(raw)
+              parsed = json.loads(raw)
               content = raw
           except Exception:
               decoded = base64.b64decode("".join(raw.split())).decode("utf-8")
-              json.loads(decoded)
+              parsed = json.loads(decoded)
               content = decoded
+          clients = [c.get("client_info", {}).get("android_client_info", {}).get("package_name") for c in parsed.get("client", [])]
+          if "com.aistudio.englishseekhen.kxmpqz" not in clients:
+              print(f"ERROR: google-services.json package mismatch. Found: {clients}", file=sys.stderr)
+              sys.exit(1)
           with open("app/google-services.json", "w", encoding="utf-8") as f:
               f.write(content)
-          print("Successfully wrote valid app/google-services.json")
+          print("Successfully wrote and validated app/google-services.json")
           EOF
           else
-            echo "::error::Missing app/google-services.json. Download google-services.json from Firebase Console (project: gen-lang-client-0585798077, package: com.aistudio.englishseekhen.kxmpqz) and either commit it to app/google-services.json or add it as a GitHub Actions secret named GOOGLE_SERVICES_JSON."
+            echo "::error::Missing app/google-services.json and GitHub secret GOOGLE_SERVICES_JSON is empty. Add your real google-services.json to GitHub Repo -> Settings -> Secrets and variables -> Actions -> GOOGLE_SERVICES_JSON."
+            {
+              echo "### ❌ Missing Firebase Configuration (`app/google-services.json`)"
+              echo "1. Open **Firebase Console** -> Project \`gen-lang-client-0585798077\` -> Android app \`com.aistudio.englishseekhen.kxmpqz\` -> Download \`google-services.json\`."
+              echo "2. In GitHub: **Settings -> Secrets and variables -> Actions -> New repository secret**."
+              echo "3. Name: \`GOOGLE_SERVICES_JSON\` and paste the file contents."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify Debug APK exists
+      - name: Verify Debug APK
         id: apk
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -maxdepth 1 -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-            echo "Debug APK not found under app/build/outputs/apk/debug"
+          if [ -z "$APK_PATH" ] || [ ! -s "$APK_PATH" ]; then
+            echo "::error::Debug APK not found or empty under app/build/outputs/apk/debug"
             exit 1
           fi
-          echo "Found APK: $APK_PATH"
+          unzip -t "$APK_PATH" >/dev/null
+          APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          APK_SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
+          echo "Found valid Debug APK: $APK_PATH ($APK_SIZE)"
+          echo "SHA-256: $APK_SHA256"
+          {
+            echo "### ✅ Debug APK Built Successfully"
+            echo "- **File:** \`$APK_PATH\`"
+            echo "- **Size:** $APK_SIZE"
+            echo "- **SHA-256:** \`$APK_SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload Debug APK Artifact
@@ -100,7 +141,41 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
+      - name: Build Optional Signed Release APK
+        id: release_apk
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Skipping Release APK signing (RELEASE_KEYSTORE_BASE64, STORE_PASSWORD, and KEY_PASSWORD secrets are not configured)."
+            echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | tr -d '\r\n' | base64 -d > my-upload-key.jks
+          export KEYSTORE_PATH="${{ github.workspace }}/my-upload-key.jks"
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          RELEASE_PATH=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -n 1)
+          rm -f my-upload-key.jks
+          if [ -z "$RELEASE_PATH" ] || [ ! -s "$RELEASE_PATH" ]; then
+            echo "::error::Release APK not found under app/build/outputs/apk/release"
+            exit 1
+          fi
+          unzip -t "$RELEASE_PATH" >/dev/null
+          echo "Found valid Release APK: $RELEASE_PATH"
+          echo "path=$RELEASE_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Release APK Artifact
+        if: steps.release_apk.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: ${{ steps.release_apk.outputs.path }}
+          if-no-files-found: error
+
       - name: Publish Debug APK to GitHub Releases
+        if: steps.release_apk.outputs.path == ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-build-${{ github.run_number }}
@@ -115,3 +190,30 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Debug & Release APKs to GitHub Releases
+        if: steps.release_apk.outputs.path != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-build-${{ github.run_number }}
+          name: "APK Build #${{ github.run_number }}"
+          body: |
+            Automated Debug and Signed Release APK build from commit `${{ github.sha }}` on branch `${{ github.ref_name }}`.
+
+            **Download on Android:** Tap the `.apk` asset below to download and install on your phone.
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.release_apk.outputs.path }}
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Reports on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-reports
+          path: app/build/reports/
+          if-no-files-found: ignore
